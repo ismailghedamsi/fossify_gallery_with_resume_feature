@@ -903,7 +903,8 @@ class ViewPagerActivity : SimpleActivity(), ViewPager.OnPageChangeListener, View
         binding.bottomActions.bottomSlideshow.beVisibleIf(visibleBottomActions and BOTTOM_ACTION_SLIDESHOW != 0)
         binding.bottomActions.bottomSlideshow.setOnLongClickListener { toast(R.string.slideshow); true }
         binding.bottomActions.bottomSlideshow.setOnClickListener {
-            initSlideshow()
+            // Quick-start slideshow with current settings (interval defaulted to 3s)
+            startSlideshow()
         }
 
         binding.bottomActions.bottomShowOnMap.beVisibleIf(visibleBottomActions and BOTTOM_ACTION_SHOW_ON_MAP != 0)
