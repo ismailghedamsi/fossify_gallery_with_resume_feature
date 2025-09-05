@@ -114,6 +114,8 @@ class ViewPagerActivity : SimpleActivity(), ViewPager.OnPageChangeListener, View
             finish()
             return
         }
+        // Ensure last seen is persisted on resume too
+        tryPersistLastSeen()
 
         if (config.bottomActions) {
             window.navigationBarColor = Color.TRANSPARENT
@@ -371,6 +373,9 @@ class ViewPagerActivity : SimpleActivity(), ViewPager.OnPageChangeListener, View
         }
         binding.mediumViewerToolbar.title = mPath.getFilenameFromPath()
 
+        // Persist initial last seen immediately upon setup
+        tryPersistLastSeen()
+
         binding.viewPager.onGlobalLayout {
             if (!isDestroyed) {
                 if (mMediaFiles.isNotEmpty()) {
@@ -589,6 +594,10 @@ class ViewPagerActivity : SimpleActivity(), ViewPager.OnPageChangeListener, View
             } else {
                 binding.viewPager.setCurrentItem(binding.viewPager.adapter!!.count - 1, false)
             }
+        } else if (forward && shouldAutoAdvanceToNextFolder()) {
+            // When slideshow reaches the end, optionally advance to next folder
+            stopSlideshow()
+            tryAdvanceToNextFolder()
         } else {
             stopSlideshow()
             toast(R.string.slideshow_ended)
@@ -1334,8 +1343,15 @@ class ViewPagerActivity : SimpleActivity(), ViewPager.OnPageChangeListener, View
     }
 
     override fun goToNextItem() {
-        binding.viewPager.setCurrentItem(binding.viewPager.currentItem + 1, false)
-        checkOrientation()
+        val current = binding.viewPager.currentItem
+        val next = current + 1
+        val count = binding.viewPager.adapter?.count ?: 0
+        if (next >= count && shouldAutoAdvanceToNextFolder()) {
+            tryAdvanceToNextFolder()
+        } else {
+            binding.viewPager.setCurrentItem(next, false)
+            checkOrientation()
+        }
     }
 
     override fun launchViewVideoIntent(path: String) {
@@ -1402,6 +1418,138 @@ class ViewPagerActivity : SimpleActivity(), ViewPager.OnPageChangeListener, View
         }
     }
 
+private fun shouldAutoAdvanceToNextFolder(): Boolean {
+        // Only in non-external intents, and when browsing a real directory (not SHOW_ALL/FAVORITES/RECYCLE_BIN)
+        if (isExternalIntent()) return false
+        if (mShowAll) return false
+        if (mDirectory == FAVORITES || mDirectory == RECYCLE_BIN) return false
+        return true
+    }
+
+private fun tryPersistLastSeen() {
+        val medium = getCurrentMedium() ?: return
+        // Do not persist for external intents where the app didn't initiate viewing
+        if (isExternalIntent()) return
+        // Persist the actual directory we are browsing (mDirectory)
+        try {
+            applicationContext.config.lastSeenDir = mDirectory
+            applicationContext.config.lastSeenMedia = medium.path
+            applicationContext.config.lastSeenTimestamp = System.currentTimeMillis()
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun tryAdvanceToNextFolder() {
+        // Compute next visible folder asynchronously, then open its first media item
+        ensureBackgroundThread {
+            val nextFolder = getNextVisibleFolderPath(mDirectory)
+            if (nextFolder.isNullOrEmpty()) {
+                runOnUiThread { toast(org.fossify.commons.R.string.no_items_found) }
+                return@ensureBackgroundThread
+            }
+
+            val firstMediumPath = getFirstMediumPath(nextFolder)
+            if (firstMediumPath.isNullOrEmpty()) {
+                runOnUiThread { toast(org.fossify.commons.R.string.no_items_found) }
+                return@ensureBackgroundThread
+            }
+
+            runOnUiThread {
+                try {
+                    val intent = Intent(this, ViewPagerActivity::class.java).apply {
+                        putExtra(PATH, firstMediumPath)
+                        putExtra(SHOW_ALL, false)
+                        putExtra(SHOW_FAVORITES, false)
+                        putExtra(SHOW_RECYCLE_BIN, false)
+                        putExtra(IS_FROM_GALLERY, true)
+                    }
+                    startActivity(intent)
+                    finish()
+                } catch (_: Exception) {
+                    toast(org.fossify.commons.R.string.unknown_error_occurred)
+                }
+            }
+        }
+    }
+
+    // Determine the next visible folder path based on the current directory and current sorting
+    private fun getNextVisibleFolderPath(currentPath: String): String? {
+        try {
+            val ctx = applicationContext
+            val all = try {
+                ctx.directoryDB.getAll()
+            } catch (_: Exception) {
+                emptyList()
+            }
+
+            val filtered = all.filter {
+                val p = it.path
+                p != FAVORITES && p != RECYCLE_BIN
+            } as ArrayList
+
+            if (filtered.isEmpty()) return null
+
+            // Determine numeric ordering by folder name if possible, else fall back to configured directory sorting
+            val numericallySorted = filtered.map { dir ->
+                val name = File(dir.path).name
+                val num = Regex("(\\d+)").find(name)?.value?.toLongOrNull()
+                Triple(dir.path, num, dir)
+            }.sortedWith(compareBy<Triple<String, Long?, org.fossify.gallery.models.Directory>>(
+                { it.second ?: Long.MAX_VALUE }, // numeric dirs first by ascending number; non-numeric go last
+                { it.first.lowercase() }
+            )).map { it.third }
+
+            val listToUse = if (numericallySorted.any { Regex("(\\d+)").containsMatchIn(File(it.path).name) }) {
+                numericallySorted
+            } else {
+                ctx.getSortedDirectories(filtered)
+            }
+
+            val idx = listToUse.indexOfFirst { it.path.equals(currentPath, true) }
+            if (idx == -1) return null
+            val nextIdx = idx + 1
+            return if (nextIdx in 0..listToUse.lastIndex) listToUse[nextIdx].path else null
+        } catch (_: Exception) {
+            return null
+        }
+    }
+
+    // Get the first media path from a folder, using current sorting preferences
+    private fun getFirstMediumPath(folderPath: String): String? {
+        return try {
+            val ctx = applicationContext
+            val media = try {
+                ctx.mediaDB.getMediaFromPath(folderPath)
+            } catch (_: Exception) {
+                emptyList()
+            }
+
+            if (media.isEmpty()) return null
+
+            // Prefer numerically smallest filename (e.g., 501.jpg) if names contain numbers
+            val numericSorted = media.mapNotNull { it as? Medium }.map { m ->
+                val name = File(m.path).nameWithoutExtension
+                val num = Regex("(\\d+)").find(name)?.value?.toLongOrNull()
+                Triple(m, num, name.lowercase())
+            }.sortedWith(compareBy<Triple<Medium, Long?, String>>(
+                { it.second ?: Long.MAX_VALUE }, // numeric first ascending
+                { it.third }
+            ))
+
+            val chosen = if (numericSorted.isNotEmpty() && numericSorted.first().second != null) {
+                numericSorted.first().first
+            } else {
+                val mutable = media.toMutableList()
+                MediaFetcher(ctx).sortMedia(mutable as ArrayList<Medium>, ctx.config.getFolderSorting(folderPath))
+                (mutable.firstOrNull() as? Medium)
+            }
+
+            chosen?.path
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private fun getCurrentMedium(): Medium? {
         return if (getCurrentMedia().isEmpty() || mPos == -1) {
             null
@@ -1422,6 +1570,9 @@ class ViewPagerActivity : SimpleActivity(), ViewPager.OnPageChangeListener, View
             updateActionbarTitle()
             refreshMenuItems()
             scheduleSwipe()
+
+            // Persist last seen media for resume feature
+            tryPersistLastSeen()
         }
     }
 

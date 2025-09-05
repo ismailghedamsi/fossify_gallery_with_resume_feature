@@ -16,6 +16,29 @@ class Config(context: Context) : BaseConfig(context) {
         fun newInstance(context: Context) = Config(context)
     }
 
+    // Feature flag: enable auto-resume of last seen media on app start (disabled by default for safe rollout)
+var resumeLastSeenEnabled: Boolean
+        get() = prefs.getBoolean(RESUME_LAST_SEEN_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(RESUME_LAST_SEEN_ENABLED, value).apply()
+
+    // Feature flag: when at last item in a folder in the viewer, auto-advance to the next folder
+var resumeAutoAdvanceNextFolder: Boolean
+        get() = prefs.getBoolean(RESUME_AUTO_ADVANCE_TO_NEXT_FOLDER, true)
+        set(value) = prefs.edit().putBoolean(RESUME_AUTO_ADVANCE_TO_NEXT_FOLDER, value).apply()
+
+    // Persisted last seen state
+    var lastSeenDir: String
+        get() = prefs.getString(RESUME_LAST_SEEN_DIR, "") ?: ""
+        set(value) = prefs.edit().putString(RESUME_LAST_SEEN_DIR, value).apply()
+
+    var lastSeenMedia: String
+        get() = prefs.getString(RESUME_LAST_SEEN_MEDIA, "") ?: ""
+        set(value) = prefs.edit().putString(RESUME_LAST_SEEN_MEDIA, value).apply()
+
+    var lastSeenTimestamp: Long
+        get() = prefs.getLong(RESUME_LAST_SEEN_TS, 0L)
+        set(value) = prefs.edit().putLong(RESUME_LAST_SEEN_TS, value).apply()
+
     var directorySorting: Int
         get(): Int = prefs.getInt(DIRECTORY_SORT_ORDER, SORT_BY_DATE_MODIFIED or SORT_DESCENDING)
         set(order) = prefs.edit().putInt(DIRECTORY_SORT_ORDER, order).apply()

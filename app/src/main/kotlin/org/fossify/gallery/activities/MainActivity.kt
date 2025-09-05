@@ -126,10 +126,13 @@ import org.fossify.gallery.helpers.LOCATION_INTERNAL
 import org.fossify.gallery.helpers.MAX_COLUMN_COUNT
 import org.fossify.gallery.helpers.MONTH_MILLISECONDS
 import org.fossify.gallery.helpers.MediaFetcher
+import org.fossify.gallery.helpers.PATH
 import org.fossify.gallery.helpers.PICKED_PATHS
 import org.fossify.gallery.helpers.RECYCLE_BIN
 import org.fossify.gallery.helpers.SET_WALLPAPER_INTENT
 import org.fossify.gallery.helpers.SHOW_ALL
+import org.fossify.gallery.helpers.SHOW_FAVORITES
+import org.fossify.gallery.helpers.SHOW_RECYCLE_BIN
 import org.fossify.gallery.helpers.SHOW_TEMP_HIDDEN_DURATION
 import org.fossify.gallery.helpers.SKIP_AUTHENTICATION
 import org.fossify.gallery.helpers.TYPE_GIFS
@@ -140,6 +143,7 @@ import org.fossify.gallery.helpers.TYPE_VIDEOS
 import org.fossify.gallery.helpers.getDefaultFileFilter
 import org.fossify.gallery.helpers.getPermissionToRequest
 import org.fossify.gallery.helpers.getPermissionsToRequest
+import org.fossify.commons.helpers.IS_FROM_GALLERY
 import org.fossify.gallery.interfaces.DirectoryOperationsListener
 import org.fossify.gallery.jobs.NewPhotoFetcher
 import org.fossify.gallery.models.Directory
@@ -595,6 +599,8 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         }
     }
 
+    private var mTriedAutoResume = false
+
     private fun tryLoadGallery() {
         // avoid calling anything right after granting the permission, it will be called from onResume()
         val wasMissingPermission =
@@ -603,6 +609,9 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
             if (wasMissingPermission) {
                 return@handleMediaPermissions
             }
+
+            // Attempt auto-resume before default-folder logic, but do not interfere with third-party intents or explicit defaults
+            attemptAutoResumeIfEnabled()
 
             if (!mWasDefaultFolderChecked) {
                 openDefaultFolder()
@@ -619,6 +628,41 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
             }
 
             setupLayoutManager()
+        }
+    }
+
+    private fun attemptAutoResumeIfEnabled() {
+        if (mTriedAutoResume) return
+        mTriedAutoResume = true
+
+// Only if not a pick/get intent, and no explicit default folder overrides
+        if (mIsThirdPartyIntent) return
+        if (config.defaultFolder.isNotEmpty()) return
+
+        val dir = config.lastSeenDir
+        val mediaPath = config.lastSeenMedia
+        if (dir.isEmpty() || mediaPath.isEmpty()) return
+
+        // Build a proper back stack: MainActivity -> MediaActivity (folder grid) -> ViewPagerActivity (image)
+        try {
+            // 1) Open the folder grid first
+            Intent(this, MediaActivity::class.java).apply {
+                putExtra(DIRECTORY, dir)
+                putExtra(SKIP_AUTHENTICATION, true)
+                startActivity(this)
+            }
+
+            // 2) Then open the viewer at the exact image
+            Intent(this, ViewPagerActivity::class.java).apply {
+                putExtra(PATH, mediaPath)
+                putExtra(SHOW_ALL, false)
+                putExtra(SHOW_FAVORITES, false)
+                putExtra(SHOW_RECYCLE_BIN, false)
+                putExtra(IS_FROM_GALLERY, true)
+                putExtra(SKIP_AUTHENTICATION, true)
+                startActivity(this)
+            }
+        } catch (_: Exception) {
         }
     }
 

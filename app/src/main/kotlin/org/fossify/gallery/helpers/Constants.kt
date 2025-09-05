@@ -4,6 +4,12 @@ import org.fossify.commons.helpers.*
 
 // shared preferences
 const val DIRECTORY_SORT_ORDER = "directory_sort_order"
+// resume-last-seen feature flags and state
+const val RESUME_LAST_SEEN_ENABLED = "resume_last_seen_enabled"
+const val RESUME_AUTO_ADVANCE_TO_NEXT_FOLDER = "resume_auto_advance_to_next_folder"
+const val RESUME_LAST_SEEN_DIR = "resume_last_seen_dir"
+const val RESUME_LAST_SEEN_MEDIA = "resume_last_seen_media"
+const val RESUME_LAST_SEEN_TS = "resume_last_seen_ts"
 const val GROUP_FOLDER_PREFIX = "group_folder_"
 const val VIEW_TYPE_PREFIX = "view_type_folder_"
 const val SHOW_HIDDEN_MEDIA = "show_hidden_media"

@@ -51,7 +51,14 @@ android {
                 storePassword = providers.environmentVariable("SIGNING_STORE_PASSWORD").get()
             }
         } else {
-            logger.warn("Warning: No signing config found. Build will be unsigned.")
+            // Fallback to debug keystore for local release install
+            register("release") {
+                val userHome = System.getProperty("user.home")
+                storeFile = file("$userHome/.android/debug.keystore")
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
         }
     }
 
@@ -71,9 +78,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            if (keystorePropertiesFile.exists() || hasSigningVars()) {
-                signingConfig = signingConfigs.getByName("release")
-            }
+            // Use any available 'release' signingConfig (properties/env or debug keystore fallback)
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
@@ -109,7 +115,8 @@ android {
         )
     }
 
-    namespace = project.property("APP_ID").toString()
+    // Keep namespace stable for generated R/BuildConfig while using a different applicationId for side-by-side install
+    namespace = "org.fossify.gallery"
 
     lint {
         checkReleaseBuilds = false
