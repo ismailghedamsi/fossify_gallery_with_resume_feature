@@ -9,8 +9,6 @@ It keeps the privacy‑first, open‑source spirit while adding a few focused en
   - On app launch, automatically opens the last photo you viewed in its folder.
   - Persists when you enter the viewer, swipe, and on viewer resume.
 - Smart next‑folder advance
-  - After finishing a folder, automatically switches to the next folder using numeric order (e.g., 500 → 1000).
-  - Opens the first image there (numeric name preference, e.g., 501.jpg).
 - Quick slideshow button
   - One‑tap start from the bottom action bar, no dialog.
   - Default interval: 3 seconds (configurable in Settings → Slideshow).
